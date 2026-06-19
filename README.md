@@ -1,96 +1,265 @@
-# Procurement and Policy Compliance RAG System
+# Adarsh - Procurement & Policy Compliance RAG System
 
-This repository implements a lightweight, high-precision Retrieval-Augmented Generation (RAG) system for question-answering over procurement and Navy regulation policy documents.
+[![Tests](https://github.com/YOUR_ORG/Adarsh/workflows/Tests/badge.svg)](https://github.com/YOUR_ORG/Adarsh/actions?query=workflow:Tests)
+[![Linting](https://github.com/YOUR_ORG/Adarsh/workflows/Linting/badge.svg)](https://github.com/YOUR_ORG/Adarsh/actions?query=workflow:Linting)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## Pipeline Architecture & Design Choices
+A lightweight, high-precision **Retrieval-Augmented Generation (RAG) system** for question-answering over procurement and Navy regulation policy documents. Built with BM25 lexical retrieval, metadata filtering, and Google Gemini API.
 
-The pipeline consists of the following key components:
+## 🎯 Quick Start
 
-### 1. Ingestion & Pre-Chunked Document Database
-- **Choice**: Load and process text from `Data/metaData.csv` instead of directly parsing PDF files.
-- **Rationale**: Indian procurement and regulation PDFs (such as the DPM 2025 volumes and Navy regulations) contain complex table layouts, headers/footers, and page numbers that degrade retrieval quality when parsed naively. `metaData.csv` contains pre-chunked, cleaned, and section-labeled text representing the official documents. This directly corresponds to the source document and section fields required for citations, providing a clean ground-truth starting point.
+### Prerequisites
+- Python 3.8 or higher
+- pip (Python package manager)
 
-### 2. Search Index & Vector Store
-- **Choice**: Custom TF-IDF & BM25 Retriever with metadata-based filtering.
-- **Rationale**: 
-  - **Zero-Dependency Fallback**: The BM25 retriever class is implemented in pure Python to enable out-of-the-box execution in restricted environments without requiring heavyweight dense embedding downloads.
-  - **Keyword Specificity**: Procurement/regulation questions are highly keyword-specific (e.g. referencing "Rule 11", "DPM 2025 Volume I", "Rs. 2,00,000"). Lexical retrievers excel at indexing these precise identifiers.
-  - **Metadata Filtering**: If the question asks about a specific document (e.g., "Under Navy Regulations Part I..."), the query parser automatically detects the target and filters the search candidates to only that document before ranking, eliminating irrelevant matching passages and achieving near-perfect retrieval precision.
+### Installation (5 minutes)
 
-### 3. Generation & Grounding Prompt
-- **Choice**: Grounding-focused system prompts paired with structured JSON response constraints.
-- **Rationale**:
-  - The model is instructed to answer **only** using facts directly mentioned in the retrieved context.
-  - To prevent hallucinations, the model is strictly configured to return "I cannot answer this question based on the provided corpus." if the answer is missing.
-  - Structured output (`json_object`) is enforced so the pipeline can directly extract the `answer`, `source`, and `section` fields for predictions.
-
----
-
-## File Structure
-
-- [ingest.py](file:///c:/Users/vshiv/Desktop/Adarsh/ingest.py): Reads `metaData.csv`, builds a BM25 index, and pickles it to `index.pkl`.
-- [retrieve.py](file:///c:/Users/vshiv/Desktop/Adarsh/retrieve.py): Loads the search index, parses query keywords for document filters, and returns relevant chunks.
-- [query.py](file:///c:/Users/vshiv/Desktop/Adarsh/query.py): RAG query interface that retrieves context and queries the LLM (detects and configures Gemini, falling back to a mock mode when offline).
-- [run_pipeline.py](file:///c:/Users/vshiv/Desktop/Adarsh/run_pipeline.py): Runs predictions batch-wise on all questions in `test.csv` and outputs to `predictions.csv`.
-- [eval.py](file:///c:/Users/vshiv/Desktop/Adarsh/eval.py): Runs evaluation metrics against a ground-truth subset.
-
----
-
-## How to Run
-
-First, ensure you are in the workspace root `c:\Users\vshiv\Desktop\Adarsh`.
-
-### Step 1: Index the Corpus
 ```bash
+# Clone repository
+git clone https://github.com/YOUR_ORG/Adarsh.git
+cd Adarsh
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Setup API keys
+cp .env.example .env
+# Edit .env with your Gemini API key
+```
+
+### First Run
+
+```bash
+# Build the search index
 python ingest.py
-```
-This builds and saves the index database to `index.pkl`.
 
-### Step 2: Ask a Question
+# Ask a question
+python query.py --question "Under DPM 2025 Volume I, what authority level handles procurement approval?"
+
+# Run evaluations
+python eval.py
+
+# Generate batch predictions
+python run_pipeline.py
+```
+
+For detailed setup instructions, see [SETUP.md](SETUP.md).
+
+---
+
+## 🏗️ Architecture
+
+### Why This Design?
+
+#### 1. **BM25 Lexical Retrieval** (No Heavy Embeddings)
+- ✅ **Zero-dependency fallback**: Pure Python implementation
+- ✅ **Keyword specificity**: Perfect for rule references (e.g., "Rule 11", "DPM 2025 Volume I")
+- ✅ **Transparency**: Understand exactly why documents are ranked
+
+#### 2. **Metadata-Aware Filtering**
+- Automatically detects document context in queries
+- Filters search candidates before ranking
+- Eliminates irrelevant matches for precision
+
+#### 3. **Grounding-Focused Generation**
+- Strict instructions to answer only from retrieved context
+- JSON-structured outputs for reliable extraction
+- Graceful refusal for out-of-domain questions
+
+#### 4. **Citation Tracking**
+- Every answer includes source document and section
+- Automatic attribution for traceability
+
+### System Flow
+
+```
+User Query
+    ↓
+Query Parser (detect document filters)
+    ↓
+BM25 Retriever (lexical ranking + metadata filter)
+    ↓
+Retrieved Context
+    ↓
+Gemini API (grounded generation)
+    ↓
+Structured JSON Response
+    ├─ answer (grounded in context)
+    ├─ source (document name)
+    └─ section (exact section reference)
+```
+
+---
+
+## 📁 File Structure
+
+```
+.
+├── ingest.py              # Build BM25 index from metaData.csv
+├── retrieve.py            # Query parser + BM25 retriever
+├── query.py               # RAG interface with Gemini API
+├── run_pipeline.py        # Batch predictions on test.csv
+├── eval.py                # Evaluation metrics & grounding tests
+├── Data/
+│   ├── metaData.csv       # Pre-chunked document database
+│   ├── sample_submission.csv
+│   └── GenAI_Track3_Dataset/
+│       └── Dataset/       # Source PDFs (DPM, Navy Regs)
+├── index.pkl              # Serialized BM25 index (generated)
+├── predictions.csv        # Output predictions (generated)
+├── requirements.txt       # Python dependencies
+├── README.md              # This file
+├── SETUP.md               # Detailed setup guide
+├── CONTRIBUTING.md        # Contribution guidelines
+└── LICENSE                # MIT License
+```
+
+---
+
+## 🚀 Usage Examples
+
+### Basic Query
 ```bash
-python query.py --question "Under DPM 2025 Volume I, what authority level generally handles procurement approval within delegated limits?"
+python query.py --question "What is the threshold for Rule 11?"
 ```
-*(If a `GEMINI_API_KEY` environment variable is available, the LLM will answer; otherwise, the system will run in offline simulation mode.)*
 
-### Step 3: Run the Full Evaluation Suite
+**Output:**
+```json
+{
+  "answer": "According to DPM 2025 Volume I, Rule 11 specifies...",
+  "source": "DPM-2025-VOLUME-I.pdf",
+  "section": "2.3 - Procurement Thresholds"
+}
+```
+
+### Batch Predictions
+```bash
+# First 5 questions
+python run_pipeline.py --limit 5
+
+# All questions
+python run_pipeline.py
+```
+
+### Evaluation
 ```bash
 python eval.py
 ```
 
-### Step 4: Generate Full Batch Predictions
-```bash
-python run_pipeline.py
-```
-This processes all 140 questions in `test.csv` and outputs `predictions.csv` with columns: `id,prediction,pred_source,pred_section`.
+**Metrics:**
+- Retrieval Recall@K (Recall@1, Recall@3, Recall@5)
+- Citation Accuracy
+- Refusal Accuracy
 
-For a quick test on the first 5 questions, run:
+---
+
+## 📊 Evaluation Metrics
+
+The system measures three key aspects:
+
+| Metric | Definition |
+|--------|-----------|
+| **Recall@K** | % of questions where ground-truth section is in top K results |
+| **Citation Accuracy** | % of answers with correct source + section |
+| **Refusal Accuracy** | % of unanswerable questions correctly identified |
+
+See [README.md](README.md) for detailed architecture and metrics.
+
+---
+
+## 🔧 Configuration
+
+### Environment Variables (`.env`)
+
 ```bash
-python run_pipeline.py --limit 5
+# Required for LLM-powered queries
+GEMINI_API_KEY=your_api_key_here
+
+# Optional: Customize retrieval parameters
+RETRIEVAL_TOP_K=5          # Top-K results to retrieve
+MIN_RELEVANCE_SCORE=0.3    # Minimum relevance threshold
+```
+
+Get a free Gemini API key: https://makersuite.google.com/app/apikey
+
+---
+
+## 🛠️ Development
+
+### Running Tests
+
+```bash
+# Run CI tests locally
+python -m pytest test/ -v
+
+# Run linting
+flake8 . --max-line-length=100
+```
+
+### GitHub Actions
+
+- **Tests**: Run on every push/PR (Python 3.8-3.11)
+- **Linting**: Check code style with flake8, black, isort
+
+See `.github/workflows/` for details.
+
+---
+
+## 📈 Future Improvements
+
+- [ ] **Hybrid Retrieval**: Dense embeddings (all-MiniLM) + BM25
+- [ ] **Query Expansion**: LLM-based acronym expansion
+- [ ] **Context Windowing**: Retrieve surrounding chunks for continuity
+- [ ] **Caching**: Redis for faster repeated queries
+- [ ] **API Server**: FastAPI endpoint for production deployment
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for:
+- Development setup
+- Code style guidelines
+- Submission process
+- Areas for contribution
+
+Quick start:
+```bash
+git checkout -b feature/your-feature
+# Make changes...
+git commit -m "feat: add your feature"
+git push origin feature/your-feature
+# Create a Pull Request
 ```
 
 ---
 
-## Evaluation Notes & Metrics
+## 📜 License
 
-The system uses three main classes of evaluation:
-
-1. **Retrieval Recall@K (Recall@1, Recall@3, Recall@5)**:
-   - *Definition*: The percentage of questions where the ground-truth relevant section chunk is retrieved within the top $K$ results.
-   - *Implementation*: Done in `eval.py` using 5 distinct hand-crafted grounding questions matching standard rules in the text.
-   
-2. **Citation Accuracy**:
-   - *Definition*: The percentage of answers where the LLM correctly cites the exact document and section matching ground truth.
-   
-3. **Refusal Accuracy**:
-   - *Definition*: The percentage of unanswerable questions (e.g. out-of-domain topics) correctly flagged by the LLM as unanswerable rather than guessed.
+This project is licensed under the MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-## Future Improvements (With More Time)
+## 📧 Contact & Support
 
-1. **Hybrid Retrieval (Dense + Sparse)**:
-   - Combine dense vector embeddings (using a model like `text-embedding-004` or HuggingFace `all-MiniLM-L6-v2`) with lexical BM25 ranking to capture both semantic meaning and exact keyword rules.
-2. **Query Expansion & Reformulation**:
-   - Use an LLM rewrite step to expand query acronyms (e.g., expanding "DFPDS" to "Delegation of Financial Powers Rules") prior to retrieval.
-3. **Chunk Context Windowing**:
-   - Retrieve a target chunk, but feed surrounding chunks (preceding and succeeding sections) to the LLM to provide full contextual continuity for complex rule references.
+- **Issues**: [GitHub Issues](https://github.com/YOUR_ORG/Adarsh/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/YOUR_ORG/Adarsh/discussions)
+- **Documentation**: See [SETUP.md](SETUP.md) and [README.md](README.md)
+
+---
+
+## 🙏 Acknowledgments
+
+Built for the GenAI Track 3 competition with focus on:
+- Precision in legal/policy domain QA
+- Transparency and citation accuracy
+- Production-ready architecture
+
+---
+
+**Made with ❤️ for better policy compliance and procurement transparency**
